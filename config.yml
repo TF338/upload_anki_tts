@@ -1,0 +1,11 @@
+# config.yml - Anki/TTS upload config
+deck: "HSK-4 sentences"        # Anki deck name (can be "Parent::Subdeck")
+model: "Chinese (Advanced)"    # Anki note type name
+field_chinese: "Hanzi"         # exact field name for Chinese text
+field_pinyin: "Pinyin"         # exact field name for Chinese text in Pinyin
+field_english: "Meaning"       # exact field name for English text
+field_sound: "Sound"           # exact field name for the sound
+tts_lang: "zh-CN"              # TTS language code
+temp_dir: "./temp_dir"         # where to store temp files (optional)
+rate_sleep: 0.5                # seconds to sleep between items
+default_tags: ["generated","hsk4"]   # tags to add if item has none
