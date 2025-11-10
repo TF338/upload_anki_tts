@@ -1,5 +1,5 @@
 # config.yml - Anki/TTS upload config
-deck: "HSK-4 sentences"        # Anki deck name (can be "Parent::Subdeck")
+deck: "HSK-4-sentences"        # Anki deck name (can be "Parent::Subdeck")
 model: "Chinese (Advanced)"    # Anki note type name
 field_chinese: "Hanzi"         # exact field name for Chinese text
 field_pinyin: "Pinyin"         # exact field name for Chinese text in Pinyin

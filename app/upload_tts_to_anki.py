@@ -11,6 +11,7 @@ import requests
 
 try:
     from gtts import gTTS
+
     GTTS_AVAILABLE = True
 except Exception:
     GTTS_AVAILABLE = False
@@ -75,6 +76,91 @@ def invoke_anki(action, params=None, timeout=60):
         raise Exception(f"AnkiConnect error: {res['error']}")
     return res.get("result")
 
+
+def build_id_mapping():
+    """Build a mapping of custom IDs to Anki note IDs for all Chinese cards"""
+    existing_notes = invoke_anki("findNotes", {"query": f"note:Chinese"})
+    notes_info = invoke_anki("notesInfo", {"notes": existing_notes})
+
+    id_to_note = {}
+    for note in notes_info:
+        custom_id = note['fields'].get('ID', {}).get('value', '')
+        if custom_id:
+            id_to_note[custom_id] = note['noteId']
+
+    return id_to_note
+
+def find_existing_note_by_content(chinese_text, english_text, deck_name, chinese_field, english_field):
+    """Find existing note by Chinese and English content"""
+    # Query for notes with the same Chinese text
+    chinese_query = f'"{chinese_field}:{chinese_text}"'
+    existing_notes = invoke_anki("findNotes", {"query": chinese_query})
+
+    if not existing_notes:
+        return None
+
+    # Check if any of the found notes also match the English text and are in the right deck
+    notes_info = invoke_anki("notesInfo", {"notes": existing_notes})
+    for note in notes_info:
+        note_english = note['fields'].get(english_field, {}).get('value', '')
+        if note_english.strip() == english_text.strip():
+            return note['noteId']
+
+    return None
+
+
+def update_or_create_card(card_data, deck_name, model_name, chinese_field, english_field, pinyin_field, sound_field):
+    """
+    Update existing card or create new one based on content matching.
+    card_data should be a dictionary with:
+    - id: unique identifier
+    - chinese: Chinese text
+    - pinyin: Pinyin text
+    - english: English translation
+    - tags: list of tags
+    - audio_filename: audio filename (optional)
+    """
+    card_id = card_data['id']
+    chinese_text = card_data['chinese']
+    english_text = card_data['english']
+
+    # Try to find existing note by content
+    note_id = find_existing_note_by_content(chinese_text, english_text, deck_name, chinese_field, english_field)
+
+    # Build fields dictionary
+    fields = {
+        chinese_field: chinese_text,
+        english_field: english_text,
+        pinyin_field: card_data.get('pinyin', ''),
+        "ID": card_id  # Add ID field for future reference
+    }
+
+    # Add sound field if audio filename exists
+    if card_data.get('audio_filename'):
+        fields[sound_field] = "[sound:" + card_data['audio_filename'] + "]"
+
+    if note_id:
+        # Update existing card
+        invoke_anki("updateNote", {
+            "note": {
+                "id": note_id,
+                "fields": fields,
+                "tags": card_data['tags']
+            }
+        })
+        return note_id, f"Updated existing card: {card_id}"
+    else:
+        # Create new card
+        note = {
+            "deckName": deck_name,
+            "modelName": model_name,
+            "fields": fields,
+            "tags": card_data['tags'] or []
+        }
+
+        new_note_id = invoke_anki("addNote", {"note": note})
+        return new_note_id, f"Created new card: {card_id} (Note ID: {new_note_id})"
+
 def tts_with_gtts(text, lang=DEFAULT_TTS_LANG, filepath=None, slow=False):
     """Generate mp3 using gTTS and save to filepath. Returns filepath."""
     if not GTTS_AVAILABLE:
@@ -109,6 +195,7 @@ def tts_with_google_translate_endpoint(text, lang=DEFAULT_TTS_LANG, filepath=Non
 def ensure_dir(path):
     Path(path).mkdir(parents=True, exist_ok=True)
 
+
 def safe_filename(s):
     """Return a safe filename for storing in Anki media folder"""
     import hashlib
@@ -120,24 +207,6 @@ def store_media_bytes_to_anki(filename, data_bytes):
     b64 = base64.b64encode(data_bytes).decode("utf-8")
     invoke_anki("storeMediaFile", {"filename": filename, "data": b64})
     return filename
-
-def create_anki_note(deck_name, model_name, chinese_field_name, english_field_name, pinyin_field_name, sound_field_name, chinese_text, english_text, pinyin_text, audio_filename, tags):
-    note = {
-        "deckName": deck_name,
-        "modelName": model_name,
-        "fields": {
-            chinese_field_name: chinese_text,
-            english_field_name: english_text,
-            pinyin_field_name: pinyin_text,
-            sound_field_name: "[sound:" + audio_filename + "]"
-        },
-        "options": {
-            "allowDuplicate": False
-        },
-        "tags": tags or []
-    }
-    res = invoke_anki("addNote", {"note": note})
-    return res  # returns note id or None
 
 def process_items(json_path, deck_name, model_name, chinese_field, english_field, pinyin_field, sound_field,
                   dry=False, tts_lang=DEFAULT_TTS_LANG, temp_media_dir=None, rate_sleep=0.4):
@@ -162,49 +231,67 @@ def process_items(json_path, deck_name, model_name, chinese_field, english_field
             print(f"[SKIP] item {item_id} has no 'chinese' field.")
             continue
 
-        if it.get("audio_filename") and it.get("anki_note_id"):
-            print(f"[SKIP] item {item_id} already processed ({it.get('audio_filename')}).")
-            continue
+        # Check if we need to generate audio
+        needs_audio = not it.get("audio_filename")
 
-        fname = safe_filename(item_id + "_" + chinese[:20]) #deterministic filename
-        local_mp3 = tempdir / fname
+        if needs_audio:
+            fname = safe_filename(item_id + "_" + chinese[:20])  # deterministic filename
+            local_mp3 = tempdir / fname
 
-        try:
-            if GTTS_AVAILABLE:
-                print(f"[TTS] Using gTTS for item {item_id} ...")
-                tts_with_gtts(chinese, lang=tts_lang, filepath=local_mp3)
-            else:
-                print(f"[TTS] gTTS not available; trying direct Google Translate endpoint for item {item_id} ...")
-                tts_with_google_translate_endpoint(chinese, lang=tts_lang, filepath=local_mp3)
-        except Exception as e:
-            print(f"[ERROR] TTS failed for item {item_id}: {e}")
-            continue
-
-        with open(local_mp3, "rb") as fh:
-            data = fh.read()
-
-        print(f"[UPLOAD] uploading {fname} to Anki media ...")
-        if dry:
-            print(f"[DRY] would store media as {fname} (size {len(data)} bytes)")
-        else:
             try:
-                store_media_bytes_to_anki(fname, data)
+                if GTTS_AVAILABLE:
+                    print(f"[TTS] Using gTTS for item {item_id} ...")
+                    tts_with_gtts(chinese, lang=tts_lang, filepath=local_mp3)
+                else:
+                    print(f"[TTS] gTTS not available; trying direct Google Translate endpoint for item {item_id} ...")
+                    tts_with_google_translate_endpoint(chinese, lang=tts_lang, filepath=local_mp3)
             except Exception as e:
-                print(f"[ERROR] failed to store media for {item_id}: {e}")
+                print(f"[ERROR] TTS failed for item {item_id}: {e}")
                 continue
 
+            with open(local_mp3, "rb") as fh:
+                data = fh.read()
+
+            print(f"[UPLOAD] uploading {fname} to Anki media ...")
+            if dry:
+                print(f"[DRY] would store media as {fname} (size {len(data)} bytes)")
+            else:
+                try:
+                    store_media_bytes_to_anki(fname, data)
+                except Exception as e:
+                    print(f"[ERROR] failed to store media for {item_id}: {e}")
+                    continue
+
+            it["audio_filename"] = fname
+        else:
+            fname = it["audio_filename"]
+            print(f"[SKIP] item {item_id} already has audio: {fname}")
+
+        # Update or create the card
+        card_data = {
+            "id": item_id,
+            "chinese": chinese,
+            "english": english,
+            "pinyin": pinyin,
+            "tags": tags,
+            "audio_filename": fname
+        }
+
         if dry:
-            print(f"[DRY] would create note in deck '{deck_name}' using model '{model_name}', fields: {chinese_field}, {english_field}")
+            print(f"[DRY] would update/create card in deck '{deck_name}' using model '{model_name}'")
+            it["anki_note_id"] = f"dry_run_{item_id}"
         else:
             try:
-                note_id = create_anki_note(deck_name, model_name, chinese_field, english_field, pinyin_field, sound_field, chinese, english, pinyin, fname, tags)
-                print(f"[OK] added note id {note_id} for item {item_id}")
+                note_id, message = update_or_create_card(
+                    card_data, deck_name, model_name, chinese_field, english_field,
+                    pinyin_field, sound_field
+                )
+                print(f"[OK] {message}")
                 it["anki_note_id"] = note_id
             except Exception as e:
-                print(f"[ERROR] failed to create note for {item_id}: {e}")
+                print(f"[ERROR] failed to create/update note for {item_id}: {e}")
                 continue
 
-        it["audio_filename"] = fname
         updated = True
 
         time.sleep(rate_sleep)
@@ -227,7 +314,8 @@ def process_items(json_path, deck_name, model_name, chinese_field, english_field
 def main():
     import argparse
     p = argparse.ArgumentParser(description="Generate TTS for Chinese sentences and upload to Anki via AnkiConnect.")
-    p.add_argument("--dry", action="store_true", help="Dry run: do not upload to Anki or modify original JSON (writes .dryrun.json).")
+    p.add_argument("--dry", action="store_true",
+                   help="Dry run: do not upload to Anki or modify original JSON (writes .dryrun.json).")
     args = p.parse_args()
 
     project_root = Path(__file__).resolve().parent.parent
@@ -242,7 +330,7 @@ def main():
     pinyin_field = cfg.get("field_pinyin")
     sound_field = cfg.get("field_sound")
     tts_lang = cfg.get("tts_lang", DEFAULT_TTS_LANG)
-    temp_dir =project_root /  cfg.get("temp_dir", None)
+    temp_dir = project_root / cfg.get("temp_dir", None)
     rate_sleep = float(cfg.get("rate_sleep", 0.4))
     default_tags = cfg.get("default_tags", ["generated", "hsk4"])
 
