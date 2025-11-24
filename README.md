@@ -1,4 +1,4 @@
-# 🈶 Anki Chinese TTS Card Generator
+# Anki Chinese TTS Card Generator
 
 This Python script automates the creation and updating of **Chinese Anki flashcards** by reading sentence data from JSON files, generating **TTS (text-to-speech)** audio, and uploading everything to **Anki via AnkiConnect**.
 
@@ -6,22 +6,22 @@ It’s especially useful for building HSK-style decks or custom sentence decks �
 
 ---
 
-## 🚀 Features
+## Features
 
-- 🗂 Load and combine JSON sentence files  
-- 🔊 Generate TTS audio (using `gTTS` or a fallback Google Translate endpoint)  
-- 💾 Upload MP3s directly into Anki’s media folder  
-- 🧠 Create or update Anki cards through **AnkiConnect**  
-- 🧾 Backup and dry-run modes to protect data  
-- ⚙️ Fully configurable via `config.yml`
+- Load and combine JSON sentence files  
+- Generate TTS audio (using `gTTS` or a fallback Google Translate endpoint)  
+- Upload MP3s directly into Anki’s media folder  
+- Create or update Anki cards through **AnkiConnect**  
+- Backup and dry-run modes to protect data  
+- Fully configurable via `config.yml`
 
 ---
 
-## 🧩 Requirements
+## Requirements
 
 - **Python 3.8+**  
 - **Anki** running locally with the **AnkiConnect** add-on  
-  👉 [Download AnkiConnect](https://ankiweb.net/shared/info/2055492159)  
+    [Download AnkiConnect](https://ankiweb.net/shared/info/2055492159)  
 - **Dependencies:**
 ```
 pip install requests pyyaml gTTS
@@ -29,7 +29,7 @@ pip install requests pyyaml gTTS
 
 ---
 
-## ⚙️ Configuration (`config.yml`)
+## Configuration (`config.yml`)
 
 Example:
 ```
@@ -47,7 +47,7 @@ default_tags: ["generated", "hsk4"]
 
 ---
 
-## 💡 Generating Input Sentences with an LLM
+## Generating Input Sentences with an LLM
 
 You can use an AI model (like ChatGPT or GPT-5) to automatically create input JSONs for this tool.  
 Here’s an example **prompt** you can paste into your LLM:
@@ -84,7 +84,7 @@ Save this JSON file to your `/input` directory (e.g. `input/hsk4_examples.json`)
 
 ---
 
-## 📂 Input JSON Format
+## Input JSON Format
 
 Each input file must contain a list of sentence objects:
 
@@ -100,7 +100,7 @@ Each input file must contain a list of sentence objects:
 
 ---
 
-## 🏃‍♂️ Usage
+## Usage
 
 1. Make sure Anki is running with **AnkiConnect** enabled.  
 2. Place your generated JSON files in the `/input` directory.  
@@ -118,7 +118,7 @@ python3 anki_tts_uploader.py --dry
 
 ---
 
-## 📺 Example Console Output
+## Example Console Output
 
 ```
 Loaded config: config.yml
@@ -134,7 +134,7 @@ Done.
 
 ---
 
-## 🧹 Notes
+## Notes
 
 - Automatically skips items missing `"chinese"`.  
 - Falls back to Google Translate TTS if `gTTS` isn’t available.  
